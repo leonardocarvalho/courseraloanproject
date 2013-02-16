@@ -1,3 +1,5 @@
+# Disclaimer: loops were avoided so the results for each run could be commented inline
+
 # Environment and data
 library(Hmisc);
 load("./data/loansDataWithDate.rda");
@@ -65,14 +67,12 @@ plot(transformedData$Interest.Rate,
      xlab="FICO range", 
      ylab="Interest Rate (%)");
 
-
 set.seed(1234);
 original <- loansData;
 chosen <- as.logical(rbinom(transformedData$FICO.Range, 1, 0.1));
 crossData <- transformedData[chosen,];
 transformedData <- transformedData[!chosen,]
 loansData <- loansData[!chosen,]
-
 
 # Variables yet to consider: Amount.Requested + Amount.Funded.By.Investor + Amount.Requested * Amount.Funded.By.Investor + Loan.Length
 # Modeling with no ajustments but continuous FICO as numeric
@@ -98,7 +98,6 @@ lm3 <- lm(transformedData$Interest.Rate ~ transformedData$FICO.Range + transform
 lm4 <- lm(transformedData$Interest.Rate ~ transformedData$FICO.Range + transformedData$Loan.Length + transformedData$Amount.Requested);
 # Fitting complete model, amount as a factor
 lm5 <- lm(transformedData$Interest.Rate ~ loansData$FICO.Range + transformedData$Loan.Length + transformedData$Amount.Requested);
-
 
 lm6 <- lm(transformedData$Interest.Rate ~ loansData$Amount.Requested +
             loansData$Amount.Funded.By.Investors +
@@ -130,6 +129,12 @@ points((transformedData$Interest.Rate + lm5$residuals)[sorted$ix], col="green");
 plot(sorted$x);
 points((transformedData$Interest.Rate + lm6$residuals)[sorted$ix], col="green");
 
+plot(abs(lm5$residuals) - abs(lm4$residuals));
+sum(abs(lm5$residuals) - abs(lm4$residuals));   # Model 5 fitted sligtlhy better
+
+plot(abs(lm5$residuals) - abs(lm6$residuals));
+sum(abs(lm5$residuals) - abs(lm6$residuals));  # Model 6 fitted sligtlhy better
+
 # Cross validation
 loansData <- original[chosen,];
 transformedData <- crossData;
@@ -147,8 +152,17 @@ points((predict(lm5, transformedData))[sorted$ix], col="green");
 plot(sorted$x);
 points((predict(lm6, transformedData))[sorted$ix], col="green");
 
-# 1, 1.1, 2 have visible worse performance, discard. Among 3, 4 and 5 there's not much difference. Choose the simpler: 4.
-summary(lm4);
-confint(lm4);
+# Comparing model 4, 5, and 6 predictions
+p4 <- abs(predict(lm4, transformedData) - transformedData$Interest.Rate);
+p5 <- abs(predict(lm5, transformedData) - transformedData$Interest.Rate);
+p6 <- abs(predict(lm6, transformedData) - transformedData$Interest.Rate);
 
-head(loansData)
+plot(p5 - p4);
+sum(p5 - p4);  # Negative. Model 5 performed better. Predicted around .1% closer to the correct interest rate
+
+plot(p5 - p6);
+sum(p5 - p6);  # Positive. Model 6 performed a little better, predicting around .05% closer to the correct interest rate
+
+# 1, 1.1, 2 have visible worse performance, discard. Among 3, 4 and 5 there's not much difference. Choose the simpler: 4.
+summary(lm5);
+confint(lm5);

@@ -61,6 +61,8 @@ transformedData$FICO.Range <- tapply(as.character(loansData$FICO.Range), 1:lengt
   (first + second) / 2
 });
 
+hist(transformedData$FICO.Range);
+
 # Plot to see correlations
 plot(transformedData$Interest.Rate, loansData$FICO.Range);  # Clearly a liner correlation
 plot(transformedData$Interest.Rate, transformedData$FICO.Range);  # Clearly a liner correlation
