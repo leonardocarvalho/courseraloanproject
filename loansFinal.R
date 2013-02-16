@@ -5,16 +5,33 @@ library(Hmisc);
 load("./data/loansDataWithDate.rda");
 dateDownload;
 
-# Look at data
-loansData <- loansData[!is.na(loansData$Open.CREDIT.Lines),];  # Remove missing so you don't have to be careful anymore (all cases)
-sum(is.na(loansData));  # No missing cases
-loansData[which(loansData$Amount.Funded.By.Investors < 100),];  # 6 cases that no loan was given. Don't desconsider, might be important
-
+# Help functions
 # Parse interest rates to have more meaningful results
 percToNumeric <- function(factor) {
   asChar <- as.character(factor);
   as.numeric(substr(asChar, 1, nchar(asChar) - 1));
 }
+
+plotSorted <- function(results, sorted, col="green") {
+  plot(sorted$x);
+  points(results[sorted$ix], col=col);  
+}
+
+findBetterModel <- function(model1, model2) {
+  plot(abs(model1$residuals) - abs(model2$residuals));
+  totalErrorDiff <- sum(abs(model1$residuals) - abs(model2$residuals));
+  if (totalErrorDiff < 0) {
+    finalModel <- model1;
+  } else {
+    finalModel <- model2;
+  }
+  finalModel;
+}
+
+# Look at data
+loansData <- loansData[!is.na(loansData$Open.CREDIT.Lines),];  # Remove missing so you don't have to be careful anymore (all cases)
+sum(is.na(loansData));  # No missing cases
+loansData[which(loansData$Amount.Funded.By.Investors < 100),];  # 6 cases that no loan was given. Don't desconsider, might be important
 
 # Plot some graphs  to see the data
 par(mfrow=c(1, 1));
@@ -99,7 +116,9 @@ lm4 <- lm(transformedData$Interest.Rate ~ transformedData$FICO.Range + transform
 # Fitting complete model, amount as a factor
 lm5 <- lm(transformedData$Interest.Rate ~ loansData$FICO.Range + transformedData$Loan.Length + transformedData$Amount.Requested);
 
-lm6 <- lm(transformedData$Interest.Rate ~ loansData$Amount.Requested +
+lm6 <- lm(transformedData$Interest.Rate ~ loansData$FICO.Range + loansData$Loan.Length + loansData$Amount.Requested);
+
+lm7 <- lm(transformedData$Interest.Rate ~ loansData$Amount.Requested +
             loansData$Amount.Funded.By.Investors +
             loansData$Loan.Length +
             loansData$Loan.Purpose +
@@ -113,56 +132,49 @@ lm6 <- lm(transformedData$Interest.Rate ~ loansData$Amount.Requested +
             loansData$Inquiries.in.the.Last.6.Months +
             loansData$Employment.Length);
 
+notFullModels <- list(lm1, lm2, lm3, lm4, lm5, lm6);
+allModels <- list(lm1, lm2, lm3, lm4, lm5, lm6, lm7);
+
 # Plot final graph
-par(mfrow=c(2, 3));
+par(mfrow=c(3, 3));
 sorted <- sort(transformedData$Interest.Rate, index.return=TRUE);
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm1$residuals)[sorted$ix], col="green");
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm2$residuals)[sorted$ix], col="green");
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm3$residuals)[sorted$ix], col="green");
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm4$residuals)[sorted$ix], col="green");
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm5$residuals)[sorted$ix], col="green");
-plot(sorted$x);
-points((transformedData$Interest.Rate + lm6$residuals)[sorted$ix], col="green");
+for (model in allModels) {
+  plotSorted(transformedData$Interest.Rate + model$residuals, sorted);
+}
 
-plot(abs(lm5$residuals) - abs(lm4$residuals));
-sum(abs(lm5$residuals) - abs(lm4$residuals));   # Model 5 fitted sligtlhy better
+betterFit <- lm1;
+for (model in notFullModels) {
+  betterFit <- findBetterModel(betterFit, model);
+}
+summary(betterFit);  # Model 6 was the better desconsidering the full model
 
-plot(abs(lm5$residuals) - abs(lm6$residuals));
-sum(abs(lm5$residuals) - abs(lm6$residuals));  # Model 6 fitted sligtlhy better
+# Compare better with full
+plot(abs(betterFit$residuals) - abs(lm7$residuals));
+sum(abs(betterFit$residuals) - abs(lm7$residuals));  # Model 7 fitted sligtlhy better. .1% interest rate
 
 # Cross validation
 loansData <- original[chosen,];
 transformedData <- crossData;
+par(mfrow=c(3, 3));
 sorted <- sort(transformedData$Interest.Rate, index.return=TRUE);
-plot(sorted$x);
-points((predict(lm1, transformedData))[sorted$ix], col="green");
-plot(sorted$x);
-points((predict(lm2, transformedData))[sorted$ix], col="green");
-plot(sorted$x);
-points((predict(lm3, transformedData))[sorted$ix], col="green");
-plot(sorted$x);
-points((predict(lm4, transformedData))[sorted$ix], col="green");
-plot(sorted$x);
-points((predict(lm5, transformedData))[sorted$ix], col="green");
-plot(sorted$x);
-points((predict(lm6, transformedData))[sorted$ix], col="green");
+for (model in allModels) {
+  plotSorted(predict(model, transformedData), sorted);  
+}
 
-# Comparing model 4, 5, and 6 predictions
-p4 <- abs(predict(lm4, transformedData) - transformedData$Interest.Rate);
-p5 <- abs(predict(lm5, transformedData) - transformedData$Interest.Rate);
-p6 <- abs(predict(lm6, transformedData) - transformedData$Interest.Rate);
+# Comparing models predictions
+p <- tapply(allModels, 1:7, function(model) { abs(predict(model[[1]], transformedData) - transformedData$Interest.Rate); })
 
-plot(p5 - p4);
-sum(p5 - p4);  # Negative. Model 5 performed better. Predicted around .1% closer to the correct interest rate
+index <- 1;
+for (i in 1:6) {
+  if (sum(p[[i]] - p[[index]]) < 0) {
+    index <- i;
+  }
+}
+# Again 6 was the better model. Compare to 7
+plot(p[[index]] - p[[7]]);
+sum(p[[index]] - p[[7]]);  # Positive. Model 6 performed a little better, predicting around .05% closer to the correct interest rate
+# Mean error 0.004. Insignificant!
 
-plot(p5 - p6);
-sum(p5 - p6);  # Positive. Model 6 performed a little better, predicting around .05% closer to the correct interest rate
-
-# 1, 1.1, 2 have visible worse performance, discard. Among 3, 4 and 5 there's not much difference. Choose the simpler: 4.
-summary(lm5);
-confint(lm5);
+# Choose better model, in case, 6
+summary(allModels[[index]]);
+confint(allModels[[index]]);
